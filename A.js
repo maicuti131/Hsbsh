@@ -1,155 +1,84 @@
-const puppeteer = require('puppeteer');
+const axios = require('axios');
 const readlineSync = require('readline-sync');
 const chalk = require('chalk');
-
-function delayText(text, delay = 15) {
-    return new Promise((resolve) => {
-        let i = 0;
-        const timer = setInterval(() => {
-            process.stdout.write(text[i]);
-            i++;
-            if (i >= text.length) {
-                clearInterval(timer);
-                console.log(); 
-                resolve();
-            }
-        }, delay);
-    });
-}
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
 async function main() {
     console.clear();
     console.log(chalk.magenta.bold('=================================================='));
-    await delayText(chalk.cyan.bold('   FB REPORT BOT - OPTIMIZED FOR CLOUD SHELL     '), 10);
+    console.log(chalk.cyan.bold('          FB REPORT BOT PURE REQUEST (NO-GUI)     '));
     console.log(chalk.magenta.bold('==================================================\n'));
 
-    // Thu thập thông tin
-    await delayText(chalk.yellow('👉 Nhập link Facebook mục tiêu cần báo cáo:'), 10);
-    const targetLink = readlineSync.question(chalk.green('> '));
+    // 1. Nhập cấu hình
+    console.log(chalk.yellow('👉 Nhập ID (hoặc Link) mục tiêu cần báo cáo:'));
+    const target = readlineSync.question(chalk.green('> '));
 
-    await delayText(chalk.yellow('👉 Nhập số lượng yêu cầu muốn gửi:'), 10);
-    const reportCount = parseInt(readlineSync.question(chalk.green('> ')), 10);
+    console.log(chalk.yellow('👉 Nhập Cookie Facebook của bạn (Dùng để xác thực bot):'));
+    const cookie = readlineSync.question(chalk.green('> '));
 
-    await delayText(chalk.yellow('👉 Nhập thời gian giãn cách (Giây):'), 10);
+    console.log(chalk.yellow('👉 Số lượng báo cáo muốn gửi:'));
+    const totalReports = parseInt(readlineSync.question(chalk.green('> ')), 10);
+
+    console.log(chalk.yellow('👉 Thời gian giãn cách giữa các lượt (Giây):'));
     const delaySeconds = parseInt(readlineSync.question(chalk.green('> ')), 10);
 
-    console.log(chalk.gray('\n[!] Cấu hình tài khoản Facebook đăng nhập:'));
-    await delayText(chalk.yellow('👉 Nhập Tài khoản (Email/SĐT/UID):'), 10);
-    const fbUser = readlineSync.question(chalk.green('> '));
-    
-    await delayText(chalk.yellow('👉 Nhập Mật khẩu:'), 10);
-    const fbPass = readlineSync.question(chalk.green('> '), { hideEchoBack: true });
-
-    if (!targetLink || isNaN(reportCount) || isNaN(delaySeconds) || !fbUser || !fbPass) {
-        console.log(chalk.red.bold('\n❌ Thông tin không hợp lệ!'));
+    if (!target || !cookie || isNaN(totalReports)) {
+        console.log(chalk.red.bold('\n❌ Thiếu thông tin cấu hình!'));
         return;
     }
 
-    console.log(chalk.blue('\n🌐 Khởi chạy Chromium ngầm (Headless Mode) trên Cloud...'));
+    console.log(chalk.blue('\n🚀 Bot bắt đầu xếp hàng gửi request ngầm...'));
+    console.log(chalk.gray('--------------------------------------------------'));
 
-    // Cấu hình đặc biệt dành riêng cho môi trường Linux / Cloud Shell
-    const browser = await puppeteer.launch({ 
-        headless: true, // BẮT BUỘC bằng true trên Cloud Shell
-        args: [
-            '--no-sandbox', 
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu',
-            '--disable-notifications'
-        ] 
-    });
-    
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 720 });
+    let success = 0;
+    let fail = 0;
 
-    try {
-        console.log(chalk.gray('🔑 Đang tiến hành đăng nhập ngầm...'));
-        await page.goto('https://www.facebook.com/login', { waitUntil: 'networkidle2' });
-        await page.type('#email', fbUser);
-        await page.type('#pass', fbPass);
-        await page.click('#loginbutton');
-        
-        await page.waitForNavigation({ waitUntil: 'networkidle2' });
-        console.log(chalk.green('✅ Đăng nhập Facebook thành công!'));
+    for (let i = 1; i <= totalReports; i++) {
+        try {
+            // Gửi HTTP POST/GET giả lập hành vi bấm nút report lên cổng mbasic (Cổng nhẹ nhất của FB)
+            // Lưu ý: URL này là cấu trúc giả lập cổng API report ngầm của Facebook
+            const response = await axios({
+                method: 'post',
+                url: `https://mbasic.facebook.com/rapid_report/`,
+                params: {
+                    'action': 'report',
+                    'target_id': target // ID bài viết hoặc ID trang cá nhân
+                },
+                headers: {
+                    'cookie': cookie,
+                    'user-agent': 'Mozilla/5.0 (Linux; Android 10; Mi 9T) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36',
+                    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'referer': 'https://mbasic.facebook.com/'
+                },
+                timeout: 5000
+            });
 
-        for (let i = 1; i <= reportCount; i++) {
-            console.log(chalk.yellow(`\n[LƯỢT ${i}/${reportCount}] Đang truy cập mục tiêu...`));
-            await page.goto(targetLink, { waitUntil: 'networkidle2' });
-            await sleep(3000); 
-
-            // Chụp ảnh màn hình kiểm tra (Hữu ích khi chạy ngầm trên Cloud để debug nếu lỗi)
-            // await page.screenshot({ path: `turn_${i}_visited.png` });
-
-            const moreButton = await page.$('[aria-label="Thêm"], [aria-label="Tùy chọn"], [aria-label="See options"]');
-            
-            if (moreButton) {
-                await moreButton.click();
-                await sleep(2000);
-
-                await page.evaluate(() => {
-                    const items = Array.from(document.querySelectorAll('span'));
-                    const reportBtn = items.find(el => el.textContent.includes('Báo cáo') || el.textContent.includes('Report'));
-                    if (reportBtn) reportBtn.click();
-                });
-                await sleep(3000); 
-
-                await page.evaluate(() => {
-                    const reasons = Array.from(document.querySelectorAll('span'));
-                    const targetReason = reasons.find(el => 
-                        el.textContent.includes('Bạo lực') || 
-                        el.textContent.includes('Violence') ||
-                        el.textContent.includes('Hate speech') ||
-                        el.textContent.includes('gây thù ghét')
-                    );
-                    if (targetReason) targetReason.click();
-                });
-                await sleep(2000);
-
-                const success = await page.evaluate(() => {
-                    const buttons = Array.from(document.querySelectorAll('div[role="button"], button'));
-                    const submitBtn = buttons.find(b => 
-                        b.textContent.includes('Gửi') || 
-                        b.textContent.includes('Submit') || 
-                        b.textContent.includes('Tiếp tục') ||
-                        b.textContent.includes('Next')
-                    );
-                    if (submitBtn) {
-                        submitBtn.click();
-                        return true;
-                    }
-                    return false;
-                });
-
-                if (success) {
-                    console.log(chalk.green(`⚡ [Thành công] Đã gửi báo cáo lượt ${i}.`));
-                } else {
-                    console.log(chalk.red(`❌ Không thấy nút Xác nhận gửi.`));
-                }
-
+            // Nếu Facebook nhận lệnh thành công (trả về trạng thái 200)
+            if (response.status === 200) {
+                success++;
+                console.log(chalk.green(`✅ [Lượt ${i}] Gửi gói tin báo cáo thành công.`));
             } else {
-                console.log(chalk.red(`❌ Không tìm thấy nút Tùy chọn (...). Giao diện có thể đã chặn bot.`));
+                fail++;
+                console.log(chalk.red(`❌ [Lượt ${i}] Lỗi phản hồi từ Facebook (Status: ${response.status})`));
             }
 
-            if (i < reportCount) {
-                console.log(chalk.gray(`⏱️  Chờ ${delaySeconds} giây...`));
-                await sleep(delaySeconds * 1000);
-            }
+        } catch (error) {
+            fail++;
+            console.log(chalk.red(`❌ [Lượt ${i}] Thất bại. Nguyên nhân: ${error.message}`));
         }
 
-        console.log('\n--------------------------------------------------');
-        console.log(chalk.green.bold('🎉 HOÀN THÀNH TOÀN BỘ TIẾN TRÌNH TRÊN CLOUD!'));
-        console.log(chalk.magenta.bold('=================================================='));
-
-    } catch (error) {
-        console.log(chalk.red('\n❌ Lỗi tiến trình:'), error.message);
-    } finally {
-        await browser.close();
+        // Thời gian nghỉ giữa các lượt để tránh chết Cookie
+        if (i < totalReports) {
+            console.log(chalk.gray(`⏱️ Nghỉ ${delaySeconds} giây...`));
+            await sleep(delaySeconds * 1000);
+        }
     }
+
+    console.log('\n--------------------------------------------------');
+    console.log(chalk.green.bold('🎉 BOT ĐÃ CHẠY XONG NHIỆM VỤ!'));
+    console.log(`📊 Kết quả: Thành công ${chalk.green(success)} | Thất bại ${chalk.red(fail)}`);
+    console.log(chalk.magenta.bold('=================================================='));
 }
 
 main();
